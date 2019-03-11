@@ -1,0 +1,6 @@
+Mode: Append
+-----
+' and 'a' = 'a
+' and 'a' = 'b
+ and 1 = 1
+ and 1 = 0

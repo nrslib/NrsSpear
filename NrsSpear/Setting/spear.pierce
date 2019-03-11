@@ -1,0 +1,23 @@
+{
+	"Duration" : 20,
+	"OutputPath" : "",
+
+	"Url" : "http://localhost:2972/api/values",
+	"Method" : "post",
+	"Spears" : ["sqlInjection"],
+	"Targets" : ["Value1", "Value2"],
+
+	"Content" : 
+	{
+		"Value1" : "This is default value",
+		"Value2" : "This is default value2"
+	},
+	"Headers" : 
+	{ 
+		"key": "This is header value" 
+	},
+	"Cookie" : 
+	{
+		"session" : "sessionid1234567890qwertyuiop"
+	}
+}
