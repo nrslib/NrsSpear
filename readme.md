@@ -1,5 +1,7 @@
 # NrsSpear
 
+![UI](https://github.com/nrslib/NrsSpear/blob/master/image/NrsSpear.PNG)
+
 ペネトレーションテスト補助ツールです。  
 リクエストの一部パラメータを前もって設定した値に書き換えたリクエストを複数送ることができます。
 
