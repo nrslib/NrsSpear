@@ -15,10 +15,10 @@ namespace NrsSpear.Client.Setting
             var header = lines.TakeWhile(x => x != "-----");
 
             var modeRow = lines.FirstOrDefault(x => x.ToLower().StartsWith("mode:"));
-            var modeString = modeRow.Split(":")[1].Trim();
-            if (Enum.TryParse(typeof(Mode), modeString, out var mode))
+            var modeString = modeRow.Split(':')[1].Trim();
+            if (Enum.TryParse(modeString, out Mode mode))
             {
-                Mode = (Mode) mode;
+                Mode = mode;
             }
 
             var body = lines.Skip(header.Count() + 1);

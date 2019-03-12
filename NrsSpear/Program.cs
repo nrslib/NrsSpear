@@ -1,20 +1,27 @@
 ﻿using System;
 using System.IO;
 using System.Linq;
-using System.Net.Http;
+using System.Net;
+using System.Net.Security;
+using System.Security.Cryptography.X509Certificates;
 using Newtonsoft.Json;
 using NrsSpear.AppSetting;
 using NrsSpear.Client;
 using NrsSpear.Client.Setting;
+using NrsSpear.Presenter;
 
 namespace NrsSpear
 {
+
+
     class Program
     {
         private const string RecentSettingFileName = "NrsSpear.json";
 
         static void Main(string[] args)
         {
+            ServicePointManager.ServerCertificateValidationCallback = OnRemoteCertificateValidationCallback;
+
             var recentSetting = GetRecentSetting();
 
             Console.WriteLine("Welcome to NrsSpear");
@@ -43,8 +50,7 @@ namespace NrsSpear
                 .Select(x => new SpearSetting(x))
                 .ToArray();
 
-            var httpClient = new HttpClient();
-            var spearClient = new SpearClient(httpClient, spearSettings);
+            var spearClient = new SpearClient(new ConsolePiercePresenter(), spearSettings);
 
             var pierceFile = File.ReadAllText(pierceFileFullPath);
             var setting = JsonConvert.DeserializeObject<PierceSetting>(pierceFile);
@@ -162,6 +168,15 @@ namespace NrsSpear
                     }
                 default: goto selectAction;
             }
+        }
+
+        private static bool OnRemoteCertificateValidationCallback(
+            Object sender,
+            X509Certificate certificate,
+            X509Chain chain,
+            SslPolicyErrors sslPolicyErrors)
+        {
+            return true;
         }
     }
 }

@@ -8,6 +8,8 @@ namespace NrsSpear.Client.Setting
     {
         public int Duration { get; set; }
         public string OutputPath { get; set; }
+        public string Proxy { get; set; }
+        public string ContentType { get; set; }
 
         public string Url { get; set; }
         public string Method { get; set; }

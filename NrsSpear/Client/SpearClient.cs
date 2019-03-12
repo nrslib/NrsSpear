@@ -1,24 +1,27 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Threading;
-using System.Threading.Tasks;
 using System.Web;
 using Newtonsoft.Json.Linq;
 using NrsSpear.Client.Setting;
+using NrsSpear.Presenter;
 
 namespace NrsSpear.Client
 {
     public class SpearClient
     {
-        private readonly HttpClient client;
+        private readonly IPiercePresenter presenter;
 
-        public SpearClient(HttpClient client, SpearSetting[] spearSettings = null)
+        public SpearClient(
+            IPiercePresenter presenter,
+            SpearSetting[] spearSettings = null
+            )
         {
-            this.client = client;
+            this.presenter = presenter;
             SpearSettings = spearSettings ?? new SpearSetting[] { };
         }
 
@@ -34,47 +37,66 @@ namespace NrsSpear.Client
 
         private void Run(string target, PierceSetting setting)
         {
-            var tasks = new List<SpearTask>();
+            var client = GenerateHttpClient(setting);
+            var tasks = GenerateTasks(target, setting);
+            var executeTime = DateTime.Now;
 
-            foreach (var (spearSetting, param) in SpearSettings.SelectMany(x => x.Parameters.Select(param => (SpearSetting: x, SpearParam: param))))
+            foreach (var tpl in tasks.Select((task, index) => new {task, index = index + 1}))
             {
-                Thread.Sleep(setting.Duration);
-                var body = (JObject) setting.Content.DeepClone();
-                var parameter = spearSetting.Mode == Mode.Append
-                    ? body[target] + param
-                    : param;
-                body[target] = parameter;
-                var request = CreateRequestMessage(setting);
-                if (request.Method.Equals(HttpMethod.Get))
-                {
-                    var queries = body.Children<JProperty>().Select(prop => prop.Name + "=" + HttpUtility.UrlEncode(prop.Value.ToString()));
-                    var queryString = string.Join("&", queries);
-                    request.RequestUri = new Uri(request.RequestUri, "?" + queryString);
-                }
-                else
-                {
-                    request.Content = new StringContent(body.ToString(), Encoding.UTF8, "application/json");
-                }
-                tasks.Add(new SpearTask(spearSetting, param, request, client.SendAsync(request)));
+                RunTask(client, executeTime, target, setting, tpl.task, tpl.index);
             }
 
-            Task.WaitAll(tasks.Select(x => x.Task).ToArray());
-            Output(target, tasks, setting);
             foreach (var task in tasks)
             {
                 task.Dispose();
             }
         }
 
-        private string GenerateCookieString(JObject cookieObject)
+        private HttpClient GenerateHttpClient(PierceSetting setting)
         {
-            var result = new List<string>();
-            foreach (var keyValuePair in cookieObject)
+            var cookieContainer = new CookieContainer();
+            foreach (var cookie in setting.Cookie)
             {
-                result.Add(keyValuePair.Key + "=" + keyValuePair.Value);
+                cookieContainer.SetCookies(new Uri(setting.Url), cookie.Key + "=" + cookie.Value);
             }
 
-            return string.Join("; ", result);
+            HttpClientHandler handler = new HttpClientHandler
+            {
+                CookieContainer = cookieContainer
+            };
+
+            if (!string.IsNullOrEmpty(setting.Proxy))
+            {
+                handler.Proxy = new WebProxy(setting.Proxy);
+            }
+
+            var client = new HttpClient(handler);
+
+            return client;
+        }
+
+        private List<SpearTask> GenerateTasks(string target, PierceSetting setting)
+        {
+            var tasks = new List<SpearTask>();
+            foreach (var tpl in SpearSettings
+                .Where(x => setting.Spears.Contains(x.SpearName))
+                .SelectMany(x => x.Parameters.Select(param => Tuple.Create(x, param)))
+            )
+            {
+                var spearSetting = tpl.Item1;
+                var param = tpl.Item2;
+
+                var body = (JObject) setting.Content.DeepClone();
+                var parameter = spearSetting.Mode == Mode.Append
+                    ? body[target] + param
+                    : param;
+                body[target] = parameter;
+                var request = CreateRequestMessage(setting);
+                var requestContent = RegisterContent(setting, request, body);
+                tasks.Add(new SpearTask(spearSetting, param, request, requestContent));
+            }
+
+            return tasks;
         }
 
         private HttpRequestMessage CreateRequestMessage(PierceSetting setting)
@@ -84,69 +106,47 @@ namespace NrsSpear.Client
             {
                 request.Headers.Add(headerKv.Key, headerKv.Value.ToString());
             }
-            var cookieString = GenerateCookieString(setting.Cookie);
-            request.Headers.Add("Cookie", cookieString);
 
             return request;
         }
 
-        private void Output(string target, IEnumerable<SpearTask> tasks, PierceSetting setting)
+        private string RegisterContent(PierceSetting setting, HttpRequestMessage request, JObject body)
         {
-            var directoryPath = Path.Combine(setting.OutputPath, "Result", target);
-            foreach (var directory in tasks
-                .Select(x => Path.Combine(directoryPath, x.Setting.SpearName))
-                .Distinct()
-                .Where(x => !Directory.Exists(x)))
+            string requestContent;
+            if (request.Method.Equals(HttpMethod.Get))
             {
-                Directory.CreateDirectory(directory);
+                var queryString = CreateQueryParameter(body);
+                request.RequestUri = new Uri(request.RequestUri, "?" + queryString);
+                requestContent = queryString;
             }
-
-            foreach (var (spearTask, index) in tasks.Select((task, index) => (task, index + 1)))
+            else if(setting.ContentType != "json")
             {
-                Output(Path.Combine(directoryPath, spearTask.Setting.SpearName, index + ".txt"), spearTask);
-            }
-        }
-
-        private void Output(string fileName, SpearTask task)
-        {
-            var request = task.Request;
-            var response = task.Task.Result;
-
-            var taskRequestContent = request.Content?.ReadAsStringAsync();
-            var taskResponseContent = response.Content.ReadAsStringAsync();
-
-            if (taskRequestContent != null)
-            {
-                Task.WaitAll(taskRequestContent, taskResponseContent);
+                var queryString = CreateQueryParameter(body);
+                request.Content = new StringContent(queryString);
+                requestContent = queryString;
             }
             else
             {
-                Task.WaitAll(taskResponseContent);
+                request.Content = new StringContent(body.ToString(), Encoding.UTF8, "application/json");
+                requestContent = body.ToString();
             }
 
-            var requestContent = taskRequestContent?.Result ?? "";
-            var responseContent = taskResponseContent.Result;
-            var texts = new[]
-            {
-                "# Request",
-                "",
-                request.ToString(),
-                "",
-                "## Content",
-                requestContent,
-                "",
-                "-----",
-                "",
-                "# Response",
-                "",
-                response.ToString(),
-                "",
-                "## Content",
-                responseContent
-            };
+            return requestContent;
+        }
 
-            var text = string.Join(Environment.NewLine, texts);
-            File.WriteAllText(fileName, text);
+        private string CreateQueryParameter(JObject body)
+        {
+            var queries = body.Children<JProperty>().Select(prop => prop.Name + "=" + HttpUtility.UrlEncode(prop.Value.ToString()));
+            var queryString = string.Join("&", queries);
+            return queryString;
+        }
+
+        private void RunTask(HttpClient client, DateTime executeTime, string target, PierceSetting setting, SpearTask task, int index)
+        {
+            Thread.Sleep(setting.Duration);
+            task.Run(client);
+            task.Task.Wait();
+            presenter.Handle(executeTime, target, task, setting, index);
         }
     }
 }

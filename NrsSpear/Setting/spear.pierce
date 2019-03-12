@@ -1,23 +1,23 @@
 {
 	"Duration" : 20,
 	"OutputPath" : "",
+	"Proxy" : "",
+	"ContentType" : "json",
 
-	"Url" : "http://localhost:2972/api/values",
+	"Url" : "http://localhost:2092",
 	"Method" : "post",
 	"Spears" : ["sqlInjection"],
-	"Targets" : ["Value1", "Value2"],
+	"Targets" : ["nickName"],
 
 	"Content" : 
 	{
-		"Value1" : "This is default value",
-		"Value2" : "This is default value2"
+		"nickName" : "mynickname"
 	},
 	"Headers" : 
 	{ 
-		"key": "This is header value" 
 	},
 	"Cookie" : 
 	{
-		"session" : "sessionid1234567890qwertyuiop"
+		"session" : "aasreasdaaQ0PKbvIwbHXirMpLxrDaVH234LCVQu6OHPliat6vQHpoMKsJ1NqPMAPbH_c2JZfTsQlwY1"
 	}
 }
